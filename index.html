@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pixel Art com Repulsão + Ripple Otimizado</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #0f1115;
+      font-family: Arial, sans-serif;
+    }
+
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    canvas {
+      display: block;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      cursor: pointer;
+    }
+
+    .ui {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 10;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      background: rgba(20, 20, 25, 0.85);
+      border: 1px solid rgba(255,255,255,0.08);
+      padding: 12px 14px;
+      border-radius: 12px;
+      backdrop-filter: blur(8px);
+    }
+
+    .ui label {
+      background: #1e2633;
+      color: #fff;
+      padding: 10px 14px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: 0.2s;
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .ui label:hover {
+      background: #2a3547;
+    }
+
+    .ui input[type="file"] {
+      display: none;
+    }
+
+    .ui .info {
+      color: #b9c1cc;
+      font-size: 13px;
+      max-width: 320px;
+      line-height: 1.4;
+    }
+
+    .hint {
+      position: fixed;
+      bottom: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #c9d1d9;
+      background: rgba(20, 20, 25, 0.7);
+      border: 1px solid rgba(255,255,255,0.08);
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 14px;
+      backdrop-filter: blur(8px);
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="ui">
+    <label for="fileInput">Escolher pixel art</label>
+    <input type="file" id="fileInput" accept="image/*">
+    <div class="info">
+      Passe o mouse sobre a arte para repelir os pixels e clique para disparar um ripple otimizado.
+    </div>
+  </div>
+
+  <canvas id="canvas"></canvas>
+  <div class="hint">Mouse = repulsão | Clique = ripple</div>
+
+  <script>
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d", {
+      alpha: true,
+      desynchronized: true
+    });
+
+    const fileInput = document.getElementById("fileInput");
+
+    let particles = [];
+    let animationId = null;
+    let ripples = [];
+    let isAnimating = false;
+    let keepAliveUntil = 0;
+
+    const mouse = {
+      x: -99999,
+      y: -99999,
+      radius: 85,
+      active: false
+    };
+
+    const settings = {
+      pixelSize: 8,
+      sampleStep: 2,
+      repelStrength: 4.6,
+      returnStrength: 0.12,
+      friction: 0.60,
+      alphaThreshold: 20,
+      maxDisplaySize: 0.7,
+
+      rippleSpeed: 6,
+      rippleWidth: 30,
+      rippleStrength: 1.4,
+      rippleMaxRadius: 300,
+      maxRipples: 2,
+
+      velocityEpsilon: 0.03,
+      positionEpsilon: 0.15,
+      keepAliveMs: 180
+    };
+
+    class PixelParticle {
+      constructor(x, y, color, size) {
+        this.baseX = x;
+        this.baseY = y;
+        this.x = x;
+        this.y = y;
+        this.vx = 0;
+        this.vy = 0;
+        this.color = color;
+        this.size = size;
+      }
+
+      update() {
+        const dx = this.x - mouse.x;
+        const dy = this.y - mouse.y;
+        const distSq = dx * dx + dy * dy;
+        const radiusSq = mouse.radius * mouse.radius;
+
+        if (mouse.active && distSq < radiusSq) {
+          const dist = Math.sqrt(distSq) || 0.001;
+          const force = (mouse.radius - dist) / mouse.radius;
+          const nx = dx / dist;
+          const ny = dy / dist;
+
+          this.vx += nx * force * settings.repelStrength;
+          this.vy += ny * force * settings.repelStrength;
+        }
+
+        for (let i = 0; i < ripples.length; i++) {
+          const ripple = ripples[i];
+          const rx = this.x - ripple.x;
+          const ry = this.y - ripple.y;
+          const dist = Math.sqrt(rx * rx + ry * ry) || 0.001;
+          const bandDistance = Math.abs(dist - ripple.radius);
+
+          if (bandDistance < settings.rippleWidth) {
+            const influence = 1 - (bandDistance / settings.rippleWidth);
+            const nx = rx / dist;
+            const ny = ry / dist;
+
+            this.vx += nx * influence * ripple.strength;
+            this.vy += ny * influence * ripple.strength;
+          }
+        }
+
+        this.vx += (this.baseX - this.x) * settings.returnStrength;
+        this.vy += (this.baseY - this.y) * settings.returnStrength;
+
+        this.vx *= settings.friction;
+        this.vy *= settings.friction;
+
+        this.x += this.vx;
+        this.y += this.vy;
+      }
+
+      isMoving() {
+        return (
+          Math.abs(this.vx) > settings.velocityEpsilon ||
+          Math.abs(this.vy) > settings.velocityEpsilon ||
+          Math.abs(this.x - this.baseX) > settings.positionEpsilon ||
+          Math.abs(this.y - this.baseY) > settings.positionEpsilon
+        );
+      }
+
+      snapIfStill() {
+        if (
+          Math.abs(this.vx) <= settings.velocityEpsilon &&
+          Math.abs(this.vy) <= settings.velocityEpsilon &&
+          Math.abs(this.x - this.baseX) <= settings.positionEpsilon &&
+          Math.abs(this.y - this.baseY) <= settings.positionEpsilon
+        ) {
+          this.x = this.baseX;
+          this.y = this.baseY;
+          this.vx = 0;
+          this.vy = 0;
+        }
+      }
+
+      draw() {
+        ctx.fillStyle = this.color;
+        ctx.fillRect(
+          this.x | 0,
+          this.y | 0,
+          this.size,
+          this.size
+        );
+      }
+    }
+
+    class Ripple {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.radius = 0;
+        this.strength = settings.rippleStrength;
+        this.life = 1;
+      }
+
+      update() {
+        this.radius += settings.rippleSpeed;
+        this.life *= 0.985;
+      }
+
+      isDead() {
+        return this.radius > settings.rippleMaxRadius || this.life < 0.05;
+      }
+
+      draw() {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255,255,255,${0.14 * this.life})`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    function markActive(ms = settings.keepAliveMs) {
+      keepAliveUntil = performance.now() + ms;
+      startAnimation();
+    }
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      markActive();
+    }
+
+    function rgbaToCss(r, g, b, a) {
+      return `rgba(${r}, ${g}, ${b}, ${a / 255})`;
+    }
+
+    function clearScene() {
+      particles = [];
+      ripples = [];
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (animationId) {
+        cancelAnimationFrame(animationId);
+        animationId = null;
+      }
+
+      isAnimating = false;
+    }
+
+    function loadImageFromSrc(src) {
+      const img = new Image();
+      img.onload = () => buildFromImage(img);
+      img.src = src;
+    }
+
+    function buildFromImage(img) {
+      clearScene();
+
+      const tempCanvas = document.createElement("canvas");
+      const tempCtx = tempCanvas.getContext("2d", { willReadFrequently: true });
+
+      tempCanvas.width = img.width;
+      tempCanvas.height = img.height;
+      tempCtx.imageSmoothingEnabled = false;
+      tempCtx.drawImage(img, 0, 0);
+
+      const data = tempCtx.getImageData(0, 0, img.width, img.height).data;
+
+      const maxW = window.innerWidth * settings.maxDisplaySize;
+      const maxH = window.innerHeight * settings.maxDisplaySize;
+
+      const scaleX = Math.floor(maxW / img.width);
+      const scaleY = Math.floor(maxH / img.height);
+      const pixelSize = Math.max(
+        2,
+        Math.min(scaleX || settings.pixelSize, scaleY || settings.pixelSize, 24)
+      );
+
+      const sampleStep = settings.sampleStep;
+      const particleSize = pixelSize * sampleStep;
+
+      const artWidth = Math.ceil(img.width / sampleStep) * particleSize;
+      const artHeight = Math.ceil(img.height / sampleStep) * particleSize;
+
+      const startX = Math.floor((canvas.width - artWidth) / 2);
+      const startY = Math.floor((canvas.height - artHeight) / 2);
+
+      for (let y = 0; y < img.height; y += sampleStep) {
+        for (let x = 0; x < img.width; x += sampleStep) {
+          const index = (y * img.width + x) * 4;
+          const r = data[index];
+          const g = data[index + 1];
+          const b = data[index + 2];
+          const a = data[index + 3];
+
+          if (a > settings.alphaThreshold) {
+            particles.push(
+              new PixelParticle(
+                startX + (x / sampleStep) * particleSize,
+                startY + (y / sampleStep) * particleSize,
+                rgbaToCss(r, g, b, a),
+                particleSize
+              )
+            );
+          }
+        }
+      }
+
+      markActive(300);
+    }
+
+    function animate(now) {
+      if (document.hidden) {
+        isAnimating = false;
+        animationId = null;
+        return;
+      }
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      for (let i = 0; i < ripples.length; i++) {
+        ripples[i].update();
+        ripples[i].draw();
+      }
+
+      ripples = ripples.filter(ripple => !ripple.isDead());
+
+      let hasMotion = false;
+
+      for (let i = 0; i < particles.length; i++) {
+        const particle = particles[i];
+        particle.update();
+        particle.snapIfStill();
+        particle.draw();
+
+        if (particle.isMoving()) {
+          hasMotion = true;
+        }
+      }
+
+      const shouldKeepAlive = now < keepAliveUntil;
+      const shouldContinue = hasMotion || ripples.length > 0 || shouldKeepAlive;
+
+      if (shouldContinue) {
+        animationId = requestAnimationFrame(animate);
+      } else {
+        isAnimating = false;
+        animationId = null;
+      }
+    }
+
+    function startAnimation() {
+      if (isAnimating) return;
+      isAnimating = true;
+      animationId = requestAnimationFrame(animate);
+    }
+
+    canvas.addEventListener("mousemove", (e) => {
+      mouse.x = e.clientX;
+      mouse.y = e.clientY;
+      mouse.active = true;
+      markActive();
+    });
+
+    canvas.addEventListener("mouseenter", () => {
+      mouse.active = true;
+      markActive();
+    });
+
+    canvas.addEventListener("mouseleave", () => {
+      mouse.x = -99999;
+      mouse.y = -99999;
+      mouse.active = false;
+      markActive();
+    });
+
+    canvas.addEventListener("click", (e) => {
+      ripples.push(new Ripple(e.clientX, e.clientY));
+
+      if (ripples.length > settings.maxRipples) {
+        ripples.shift();
+      }
+
+      markActive(350);
+    });
+
+    window.addEventListener("resize", () => {
+      resizeCanvas();
+    });
+
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) {
+        markActive(250);
+      }
+    });
+
+    fileInput.addEventListener("change", (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => loadImageFromSrc(e.target.result);
+      reader.readAsDataURL(file);
+    });
+
+    resizeCanvas();
+
+    const defaultPixelArt =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAAxElEQVR4AWP4z8DA8J+BgYHhPwMDA8P/BgaG/y8MDAz/f2BgYPjPwMDA/38GBgb+PwYGBv4/Ghoa/j8GBgb+PwwMDD8wMDAw/AcGBv4fBgYG/j8MDAz/PwMDA/8fBgYG/j8DAwP/PwYGBv4/BgYG/j8GBgb+PwMDA/8/BgYG/j8MDAz/PwYGBv4/BgYG/j8DAwP/PwMDA/8/BgYG/j8DAwP/PwYGBv4/BgYG/j8MDAz/PwMDA/8AANM3E5v2Y4rKAAAAAElFTkSuQmCC";
+
+    loadImageFromSrc(defaultPixelArt);
+  </script>
+</body>
+</html>
