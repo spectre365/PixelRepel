@@ -126,16 +126,16 @@
     const settings = {
       pixelSize: 8,
       sampleStep: 2,
-      repelStrength: 4.6,
-      returnStrength: 0.12,
-      friction: 0.60,
+      repelStrength: 0.5,
+      returnStrength: 0.10,
+      friction: 0.82,
       alphaThreshold: 20,
       maxDisplaySize: 0.7,
 
-      rippleSpeed: 6,
+      rippleSpeed: 10,
       rippleWidth: 30,
-      rippleStrength: 1.4,
-      rippleMaxRadius: 300,
+      rippleStrength: 3.2,
+      rippleMaxRadius: 400,
       maxRipples: 2,
 
       velocityEpsilon: 0.03,
@@ -308,21 +308,21 @@
 
       const data = tempCtx.getImageData(0, 0, img.width, img.height).data;
 
+      const sampleStep = settings.sampleStep;
+
+      const sampledWidth = Math.ceil(img.width / sampleStep);
+      const sampledHeight = Math.ceil(img.height / sampleStep);
+
       const maxW = window.innerWidth * settings.maxDisplaySize;
       const maxH = window.innerHeight * settings.maxDisplaySize;
 
-      const scaleX = Math.floor(maxW / img.width);
-      const scaleY = Math.floor(maxH / img.height);
-      const pixelSize = Math.max(
-        2,
-        Math.min(scaleX || settings.pixelSize, scaleY || settings.pixelSize, 24)
-      );
+      const blockSizeX = Math.floor(maxW / sampledWidth);
+      const blockSizeY = Math.floor(maxH / sampledHeight);
 
-      const sampleStep = settings.sampleStep;
-      const particleSize = pixelSize * sampleStep;
+      const particleSize = Math.max(1, Math.min(blockSizeX, blockSizeY, 24));
 
-      const artWidth = Math.ceil(img.width / sampleStep) * particleSize;
-      const artHeight = Math.ceil(img.height / sampleStep) * particleSize;
+      const artWidth = sampledWidth * particleSize;
+      const artHeight = sampledHeight * particleSize;
 
       const startX = Math.floor((canvas.width - artWidth) / 2);
       const startY = Math.floor((canvas.height - artHeight) / 2);
@@ -338,8 +338,8 @@
           if (a > settings.alphaThreshold) {
             particles.push(
               new PixelParticle(
-                startX + (x / sampleStep) * particleSize,
-                startY + (y / sampleStep) * particleSize,
+                startX + Math.floor(x / sampleStep) * particleSize,
+                startY + Math.floor(y / sampleStep) * particleSize,
                 rgbaToCss(r, g, b, a),
                 particleSize
               )
