@@ -223,12 +223,7 @@
 
       draw() {
         ctx.fillStyle = this.color;
-        ctx.fillRect(
-          this.x | 0,
-          this.y | 0,
-          this.size,
-          this.size
-        );
+        ctx.fillRect(this.x | 0, this.y | 0, this.size, this.size);
       }
     }
 
@@ -308,13 +303,18 @@
 
       const data = tempCtx.getImageData(0, 0, img.width, img.height).data;
 
-      const sampleStep = settings.sampleStep;
+      const maxW = window.innerWidth * settings.maxDisplaySize;
+      const maxH = window.innerHeight * settings.maxDisplaySize;
+
+      const targetParticles = 12000;
+      const adaptiveStep = Math.max(
+        1,
+        Math.ceil(Math.sqrt((img.width * img.height) / targetParticles))
+      );
+      const sampleStep = Math.max(settings.sampleStep, adaptiveStep);
 
       const sampledWidth = Math.ceil(img.width / sampleStep);
       const sampledHeight = Math.ceil(img.height / sampleStep);
-
-      const maxW = window.innerWidth * settings.maxDisplaySize;
-      const maxH = window.innerHeight * settings.maxDisplaySize;
 
       const blockSizeX = Math.floor(maxW / sampledWidth);
       const blockSizeY = Math.floor(maxH / sampledHeight);
@@ -426,9 +426,7 @@
       markActive(350);
     });
 
-    window.addEventListener("resize", () => {
-      resizeCanvas();
-    });
+    window.addEventListener("resize", resizeCanvas);
 
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden) {
