@@ -3,11 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pixel Art com Repulsão + Ripple Otimizado</title>
+  <meta property="og:title" content="PixelRepel">
+  <meta property="og:description" content="Visual experiment with an image that reacts to the cursor and ripple on click.">
+  <meta property="og:image" content="https://i.imgur.com/DMQP4PB.png">
+  <meta property="og:type" content="website">
+  <title>PixelRepel</title>
   <style>
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
     html, body {
       margin: 0;
@@ -22,14 +24,11 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      position: relative;
     }
 
     canvas {
       display: block;
-      image-rendering: pixelated;
-      image-rendering: crisp-edges;
-      cursor: pointer;
+      cursor: crosshair;
     }
 
     .ui {
@@ -40,8 +39,8 @@
       display: flex;
       gap: 10px;
       align-items: center;
-      background: rgba(20, 20, 25, 0.85);
-      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(20,20,25,.85);
+      border: 1px solid rgba(255,255,255,.08);
       padding: 12px 14px;
       border-radius: 12px;
       backdrop-filter: blur(8px);
@@ -54,8 +53,8 @@
       border-radius: 10px;
       cursor: pointer;
       font-size: 14px;
-      transition: 0.2s;
-      border: 1px solid rgba(255,255,255,0.08);
+      transition: .2s;
+      border: 1px solid rgba(255,255,255,.08);
     }
 
     .ui label:hover {
@@ -66,21 +65,103 @@
       display: none;
     }
 
-    .ui .info {
-      color: #b9c1cc;
+    .debug-panel {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 230px;
+      height: 100%;
+      overflow-y: auto;
+      background: rgba(14,16,20,.95);
+      border-left: 1px solid rgba(255,255,255,.07);
+      padding: 20px 16px 40px;
+      z-index: 20;
+      color: #c9d1d9;
       font-size: 13px;
-      max-width: 320px;
-      line-height: 1.4;
+    }
+
+    .debug-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: #8b949e;
+      margin: 0 0 16px;
+    }
+
+    .debug-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .debug-option input[type="checkbox"] {
+      accent-color: #c4c4c4;
+      width: 15px;
+      height: 15px;
+    }
+
+    .debug-divider {
+      border: none;
+      border-top: 1px solid rgba(255,255,255,.07);
+      margin: 14px 0;
+    }
+
+    .debug-section {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: #8b949e;
+      margin: 0 0 10px;
+    }
+
+    .debug-slider {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      margin-bottom: 12px;
+    }
+
+    .debug-slider-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .debug-slider output {
+      font-variant-numeric: tabular-nums;
+      color: #c4c4c4;
+      font-weight: 600;
+    }
+
+    .debug-slider input[type="range"] {
+      width: 100%;
+      accent-color: #c4c4c4;
+    }
+
+    .debug-slider.muted {
+      opacity: .4;
+      pointer-events: none;
+    }
+
+    .mesh-stats {
+      font-size: 11px;
+      color: #8b949e;
+      margin: 2px 0 0;
     }
 
     .hint {
       position: fixed;
       bottom: 18px;
-      left: 50%;
+      left: calc((100vw) / 2);
       transform: translateX(-50%);
       color: #c9d1d9;
-      background: rgba(20, 20, 25, 0.7);
-      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(20,20,25,.7);
+      border: 1px solid rgba(255,255,255,.08);
       padding: 10px 14px;
       border-radius: 12px;
       font-size: 14px;
@@ -91,139 +172,258 @@
 </head>
 <body>
   <div class="ui">
-    <label for="fileInput">Escolher pixel art</label>
+    <label for="fileInput">Escolher imagem</label>
     <input type="file" id="fileInput" accept="image/*">
-    <div class="info">
-      Passe o mouse sobre a arte para repelir os pixels e clique para disparar um ripple otimizado.
-    </div>
   </div>
 
   <canvas id="canvas"></canvas>
+
+  <aside class="debug-panel">
+    <p class="debug-title">Debug</p>
+
+    <label class="debug-option">
+      <input type="checkbox" id="chkMesh">
+      <span>Show mesh</span>
+    </label>
+
+    <label class="debug-option">
+      <input type="checkbox" id="chkPoly">
+      <span>Show polygons</span>
+    </label>
+
+    <label class="debug-option">
+      <input type="checkbox" id="chkSpread">
+      <span>Spread</span>
+    </label>
+
+    <div class="debug-slider muted" id="gapSlider">
+      <div class="debug-slider-row">Gap <output id="outGap">42</output></div>
+      <input type="range" id="sldGap" min="0" max="140" value="42">
+    </div>
+
+    <div class="debug-divider"></div>
+    <p class="debug-section">Mesh</p>
+
+    <div class="debug-slider">
+      <div class="debug-slider-row">Columns <output id="outCols">64</output></div>
+      <input type="range" id="sldCols" min="4" max="256" value="64">
+    </div>
+
+    <div class="debug-slider">
+      <div class="debug-slider-row">Rows <output id="outRows">64</output></div>
+      <input type="range" id="sldRows" min="4" max="256" value="64">
+    </div>
+
+    <p class="mesh-stats" id="meshStats">32768 triangles · 16384 cells</p>
+
+    <div class="debug-divider"></div>
+    <p class="debug-section">Repel</p>
+
+    <div class="debug-slider">
+      <div class="debug-slider-row">Radius <output id="outRadius">85</output></div>
+      <input type="range" id="sldRadius" min="20" max="400" value="85">
+    </div>
+
+    <div class="debug-slider">
+      <div class="debug-slider-row">Strength <output id="outStrength">6</output></div>
+      <input type="range" id="sldStrength" min="1" max="60" value="6">
+    </div>
+
+    <div class="debug-divider"></div>
+    <p class="debug-section">Ripple</p>
+
+    <div class="debug-slider">
+      <div class="debug-slider-row">Strength <output id="outRStr">2</output></div>
+      <input type="range" id="sldRStr" min="1" max="30" value="2">
+    </div>
+
+    <div class="debug-slider">
+      <div class="debug-slider-row">Speed <output id="outRSpd">10</output></div>
+      <input type="range" id="sldRSpd" min="2" max="40" value="10">
+    </div>
+  </aside>
+
   <div class="hint">Mouse = repulsão | Clique = ripple</div>
 
   <script>
+    const PANEL_W = 230;
     const canvas = document.getElementById("canvas");
-    const ctx = canvas.getContext("2d", {
-      alpha: true,
-      desynchronized: true
-    });
+    const ctx = canvas.getContext("2d", { alpha: true, desynchronized: true });
 
-    const fileInput = document.getElementById("fileInput");
+    const cfg = {
+      cols: 64,
+      rows: 64,
+      repelRadius: 85,
+      repelStrength: 6,
+      spread: false,
+      gap: 42,
+      returnStr: 0.16,
+      friction: 0.82,
+      rippleStr: 6,
+      rippleSpd: 10,
+      rippleWidth: 30,
+      rippleMaxR: 500,
+      maxRipples: 24,
+      showMesh: false,
+      showPoly: false,
+      maxArea: 0.78,
+      alphaThresh: 20,
+      jitterAmount: 0.18
+    };
 
-    let particles = [];
-    let animationId = null;
+    function wireRange(id, outId, key, rebuild = false) {
+      const el = document.getElementById(id);
+      const out = document.getElementById(outId);
+
+      el.addEventListener("input", () => {
+        cfg[key] = Number(el.value);
+        out.textContent = el.value;
+
+        if (rebuild && currentImg) buildFromImage(currentImg);
+        if (key === "cols" || key === "rows") updateStats();
+      });
+    }
+
+    wireRange("sldCols", "outCols", "cols", true);
+    wireRange("sldRows", "outRows", "rows", true);
+    wireRange("sldGap", "outGap", "gap", true);
+    wireRange("sldRadius", "outRadius", "repelRadius");
+    wireRange("sldStrength", "outStrength", "repelStrength");
+    wireRange("sldRStr", "outRStr", "rippleStr");
+    wireRange("sldRSpd", "outRSpd", "rippleSpd");
+
+    document.getElementById("chkMesh").onchange = e => {
+      cfg.showMesh = e.target.checked;
+      markActive();
+    };
+
+    document.getElementById("chkPoly").onchange = e => {
+      cfg.showPoly = e.target.checked;
+      markActive();
+    };
+
+    document.getElementById("chkSpread").onchange = e => {
+      cfg.spread = e.target.checked;
+      document.getElementById("gapSlider").classList.toggle("muted", !cfg.spread);
+      if (currentImg) buildFromImage(currentImg);
+    };
+
+    function updateStats() {
+      document.getElementById("meshStats").textContent =
+        `${cfg.cols * cfg.rows * 2} triangles · ${cfg.cols * cfg.rows} cells`;
+    }
+
+    function smoothstep(t) {
+      return t * t * (3 - 2 * t);
+    }
+
+    function getCanvasMouse(e) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: ((e.clientX - rect.left) / rect.width) * canvas.width,
+        y: ((e.clientY - rect.top) / rect.height) * canvas.height
+      };
+    }
+
+    let cells = [];
     let ripples = [];
-    let isAnimating = false;
-    let keepAliveUntil = 0;
+    let currentImg = null;
+    let animId = null;
+    let isAnim = false;
+    let keepUntil = 0;
 
     const mouse = {
-      x: -99999,
-      y: -99999,
-      radius: 85,
+      x: -90000,
+      y: -90000,
       active: false
     };
 
-    const settings = {
-      pixelSize: 8,
-      sampleStep: 2,
-      repelStrength: 8.0,
-      returnStrength: 0.10,
-      friction: 0.62,
-      alphaThreshold: 20,
-      maxDisplaySize: 0.7,
-
-      rippleSpeed: 10,
-      rippleWidth: 30,
-      rippleStrength: 6.2,
-      rippleMaxRadius: 500,
-      maxRipples: 24,
-
-      velocityEpsilon: 0.03,
-      positionEpsilon: 0.15,
-      keepAliveMs: 180
-    };
-
-    class PixelParticle {
-      constructor(x, y, color, size) {
-        this.baseX = x;
-        this.baseY = y;
-        this.x = x;
-        this.y = y;
+    class Cell {
+      constructor(bx, by, w, h, img, sx, sy, sw, sh, jitterX = 0, jitterY = 0) {
+        this.bx = bx;
+        this.by = by;
+        this.x = bx;
+        this.y = by;
         this.vx = 0;
         this.vy = 0;
-        this.color = color;
-        this.size = size;
+        this.w = w;
+        this.h = h;
+        this.img = img;
+        this.sx = sx;
+        this.sy = sy;
+        this.sw = sw;
+        this.sh = sh;
+        this.jitterX = jitterX;
+        this.jitterY = jitterY;
       }
 
       update() {
-        const dx = this.x - mouse.x;
-        const dy = this.y - mouse.y;
-        const distSq = dx * dx + dy * dy;
-        const radiusSq = mouse.radius * mouse.radius;
+        const cx = this.x + this.w * 0.5 + this.jitterX;
+        const cy = this.y + this.h * 0.5 + this.jitterY;
 
-        if (mouse.active && distSq < radiusSq) {
-          const dist = Math.sqrt(distSq) || 0.001;
-          const force = (mouse.radius - dist) / mouse.radius;
-          const nx = dx / dist;
-          const ny = dy / dist;
+        if (mouse.active) {
+          const dx = cx - mouse.x;
+          const dy = cy - mouse.y;
+          const d2 = dx * dx + dy * dy;
+          const r = cfg.repelRadius;
 
-          this.vx += nx * force * settings.repelStrength;
-          this.vy += ny * force * settings.repelStrength;
-        }
+          if (d2 < r * r) {
+            const d = Math.sqrt(d2) || 0.001;
+            const t = 1 - (d / r);
+            const f = smoothstep(t);
 
-        for (let i = 0; i < ripples.length; i++) {
-          const ripple = ripples[i];
-          const rx = this.x - ripple.x;
-          const ry = this.y - ripple.y;
-          const dist = Math.sqrt(rx * rx + ry * ry) || 0.001;
-          const bandDistance = Math.abs(dist - ripple.radius);
-
-          if (bandDistance < settings.rippleWidth) {
-            const influence = 1 - (bandDistance / settings.rippleWidth);
-            const nx = rx / dist;
-            const ny = ry / dist;
-
-            this.vx += nx * influence * ripple.strength;
-            this.vy += ny * influence * ripple.strength;
+            this.vx += (dx / d) * f * cfg.repelStrength;
+            this.vy += (dy / d) * f * cfg.repelStrength;
           }
         }
 
-        this.vx += (this.baseX - this.x) * settings.returnStrength;
-        this.vy += (this.baseY - this.y) * settings.returnStrength;
+        for (const rp of ripples) {
+          const dx = cx - rp.x;
+          const dy = cy - rp.y;
+          const d = Math.sqrt(dx * dx + dy * dy) || 0.001;
+          const band = Math.abs(d - rp.radius);
 
-        this.vx *= settings.friction;
-        this.vy *= settings.friction;
+          if (band < cfg.rippleWidth) {
+            const inf = (1 - band / cfg.rippleWidth) * rp.life;
+            this.vx += (dx / d) * inf * rp.strength;
+            this.vy += (dy / d) * inf * rp.strength;
+          }
+        }
+
+        this.vx += (this.bx - this.x) * cfg.returnStr;
+        this.vy += (this.by - this.y) * cfg.returnStr;
+
+        this.vx *= cfg.friction;
+        this.vy *= cfg.friction;
 
         this.x += this.vx;
         this.y += this.vy;
       }
 
-      isMoving() {
+      moving() {
         return (
-          Math.abs(this.vx) > settings.velocityEpsilon ||
-          Math.abs(this.vy) > settings.velocityEpsilon ||
-          Math.abs(this.x - this.baseX) > settings.positionEpsilon ||
-          Math.abs(this.y - this.baseY) > settings.positionEpsilon
+          Math.abs(this.vx) > 0.03 ||
+          Math.abs(this.vy) > 0.03 ||
+          Math.abs(this.x - this.bx) > 0.15 ||
+          Math.abs(this.y - this.by) > 0.15
         );
       }
 
-      snapIfStill() {
-        if (
-          Math.abs(this.vx) <= settings.velocityEpsilon &&
-          Math.abs(this.vy) <= settings.velocityEpsilon &&
-          Math.abs(this.x - this.baseX) <= settings.positionEpsilon &&
-          Math.abs(this.y - this.baseY) <= settings.positionEpsilon
-        ) {
-          this.x = this.baseX;
-          this.y = this.baseY;
+      snap() {
+        if (!this.moving()) {
+          this.x = this.bx;
+          this.y = this.by;
           this.vx = 0;
           this.vy = 0;
         }
       }
 
       draw() {
-        ctx.fillStyle = this.color;
-        ctx.fillRect(this.x | 0, this.y | 0, this.size, this.size);
+        ctx.drawImage(
+          this.img,
+          this.sx, this.sy, this.sw, this.sh,
+          this.x, this.y, this.w, this.h
+        );
       }
     }
 
@@ -232,17 +432,17 @@
         this.x = x;
         this.y = y;
         this.radius = 0;
-        this.strength = settings.rippleStrength;
+        this.strength = cfg.rippleStr;
         this.life = 1;
       }
 
       update() {
-        this.radius += settings.rippleSpeed;
+        this.radius += cfg.rippleSpd;
         this.life *= 0.985;
       }
 
-      isDead() {
-        return this.radius > settings.rippleMaxRadius || this.life < 0.05;
+      dead() {
+        return this.radius > cfg.rippleMaxR || this.life < 0.05;
       }
 
       draw() {
@@ -256,150 +456,165 @@
       }
     }
 
-    function markActive(ms = settings.keepAliveMs) {
-      keepAliveUntil = performance.now() + ms;
-      startAnimation();
-    }
+    function buildFromImage(img) {
+      currentImg = img;
+      cells = [];
 
-    function resizeCanvas() {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-      markActive();
-    }
+      const cols = cfg.cols;
+      const rows = cfg.rows;
+      const gap = cfg.spread ? cfg.gap : 0;
 
-    function rgbaToCss(r, g, b, a) {
-      return `rgba(${r}, ${g}, ${b}, ${a / 255})`;
-    }
+      const maxW = canvas.width * cfg.maxArea;
+      const maxH = canvas.height * cfg.maxArea;
+      const asp = img.naturalWidth / img.naturalHeight;
 
-    function clearScene() {
-      particles = [];
-      ripples = [];
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      if (animationId) {
-        cancelAnimationFrame(animationId);
-        animationId = null;
+      let artW, artH;
+      if (maxW / maxH > asp) {
+        artH = maxH;
+        artW = artH * asp;
+      } else {
+        artW = maxW;
+        artH = artW / asp;
       }
 
-      isAnimating = false;
-    }
+      const cellW = (artW - gap * (cols - 1)) / cols;
+      const cellH = (artH - gap * (rows - 1)) / rows;
+      const sx0 = (canvas.width - artW) / 2;
+      const sy0 = (canvas.height - artH) / 2;
 
-    function loadImageFromSrc(src) {
-      const img = new Image();
-      img.onload = () => buildFromImage(img);
-      img.src = src;
-    }
+      const srcW = img.naturalWidth / cols;
+      const srcH = img.naturalHeight / rows;
 
-    function buildFromImage(img) {
-      clearScene();
+      const tc = document.createElement("canvas");
+      tc.width = cols;
+      tc.height = rows;
+      const tx = tc.getContext("2d", { willReadFrequently: true });
 
-      const tempCanvas = document.createElement("canvas");
-      const tempCtx = tempCanvas.getContext("2d", { willReadFrequently: true });
+      tx.imageSmoothingEnabled = true;
+      tx.imageSmoothingQuality = "high";
+      tx.drawImage(img, 0, 0, cols, rows);
 
-      tempCanvas.width = img.width;
-      tempCanvas.height = img.height;
-      tempCtx.imageSmoothingEnabled = false;
-      tempCtx.drawImage(img, 0, 0);
+      const alpha = tx.getImageData(0, 0, cols, rows).data;
 
-      const data = tempCtx.getImageData(0, 0, img.width, img.height).data;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if (alpha[((r * cols) + c) * 4 + 3] <= cfg.alphaThresh) continue;
 
-      const maxW = window.innerWidth * settings.maxDisplaySize;
-      const maxH = window.innerHeight * settings.maxDisplaySize;
+          const jitterBase = Math.min(cellW, cellH) * cfg.jitterAmount;
+          const jitterX = (Math.random() - 0.5) * jitterBase;
+          const jitterY = (Math.random() - 0.5) * jitterBase;
 
-      const targetParticles = 12000;
-      const adaptiveStep = Math.max(
-        1,
-        Math.ceil(Math.sqrt((img.width * img.height) / targetParticles))
-      );
-      const sampleStep = Math.max(settings.sampleStep, adaptiveStep);
-
-      const sampledWidth = Math.ceil(img.width / sampleStep);
-      const sampledHeight = Math.ceil(img.height / sampleStep);
-
-      const blockSizeX = Math.floor(maxW / sampledWidth);
-      const blockSizeY = Math.floor(maxH / sampledHeight);
-
-      const particleSize = Math.max(1, Math.min(blockSizeX, blockSizeY, 24));
-
-      const artWidth = sampledWidth * particleSize;
-      const artHeight = sampledHeight * particleSize;
-
-      const startX = Math.floor((canvas.width - artWidth) / 2);
-      const startY = Math.floor((canvas.height - artHeight) / 2);
-
-      for (let y = 0; y < img.height; y += sampleStep) {
-        for (let x = 0; x < img.width; x += sampleStep) {
-          const index = (y * img.width + x) * 4;
-          const r = data[index];
-          const g = data[index + 1];
-          const b = data[index + 2];
-          const a = data[index + 3];
-
-          if (a > settings.alphaThreshold) {
-            particles.push(
-              new PixelParticle(
-                startX + Math.floor(x / sampleStep) * particleSize,
-                startY + Math.floor(y / sampleStep) * particleSize,
-                rgbaToCss(r, g, b, a),
-                particleSize
-              )
-            );
-          }
+          cells.push(new Cell(
+            sx0 + c * (cellW + gap),
+            sy0 + r * (cellH + gap),
+            cellW,
+            cellH,
+            img,
+            c * srcW,
+            r * srcH,
+            srcW,
+            srcH,
+            jitterX,
+            jitterY
+          ));
         }
       }
 
       markActive(300);
     }
 
-    function animate(now) {
+    function drawMesh() {
+      ctx.save();
+      ctx.strokeStyle = "rgba(0,220,180,0.6)";
+      ctx.lineWidth = 0.5;
+
+      for (const c of cells) {
+        ctx.strokeRect(c.x, c.y, c.w, c.h);
+      }
+
+      ctx.restore();
+    }
+
+    function drawPoly() {
+      ctx.save();
+      ctx.strokeStyle = "rgba(255,90,90,0.8)";
+      ctx.lineWidth = 0.5;
+
+      for (const c of cells) {
+        ctx.beginPath();
+        ctx.moveTo(c.x, c.y);
+        ctx.lineTo(c.x + c.w, c.y);
+        ctx.lineTo(c.x + c.w, c.y + c.h);
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(c.x, c.y);
+        ctx.lineTo(c.x + c.w, c.y + c.h);
+        ctx.lineTo(c.x, c.y + c.h);
+        ctx.closePath();
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+
+    function loop(now) {
       if (document.hidden) {
-        isAnimating = false;
-        animationId = null;
+        isAnim = false;
+        animId = null;
         return;
       }
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      for (let i = 0; i < ripples.length; i++) {
-        ripples[i].update();
-        ripples[i].draw();
+      for (const rp of ripples) {
+        rp.update();
+        rp.draw();
       }
 
-      ripples = ripples.filter(ripple => !ripple.isDead());
+      ripples = ripples.filter(r => !r.dead());
 
-      let hasMotion = false;
+      let moving = false;
 
-      for (let i = 0; i < particles.length; i++) {
-        const particle = particles[i];
-        particle.update();
-        particle.snapIfStill();
-        particle.draw();
-
-        if (particle.isMoving()) {
-          hasMotion = true;
-        }
+      for (const c of cells) {
+        c.update();
+        c.snap();
+        c.draw();
+        if (c.moving()) moving = true;
       }
 
-      const shouldKeepAlive = now < keepAliveUntil;
-      const shouldContinue = hasMotion || ripples.length > 0 || shouldKeepAlive;
+      if (cfg.showMesh) drawMesh();
+      if (cfg.showPoly) drawPoly();
 
-      if (shouldContinue) {
-        animationId = requestAnimationFrame(animate);
+      if (moving || ripples.length || now < keepUntil) {
+        animId = requestAnimationFrame(loop);
       } else {
-        isAnimating = false;
-        animationId = null;
+        isAnim = false;
+        animId = null;
       }
     }
 
-    function startAnimation() {
-      if (isAnimating) return;
-      isAnimating = true;
-      animationId = requestAnimationFrame(animate);
+    function markActive(ms = 180) {
+      keepUntil = performance.now() + ms;
+      if (!isAnim) {
+        isAnim = true;
+        animId = requestAnimationFrame(loop);
+      }
     }
 
-    canvas.addEventListener("mousemove", (e) => {
-      mouse.x = e.clientX;
-      mouse.y = e.clientY;
+    function resizeCanvas() {
+      canvas.width = window.innerWidth - PANEL_W;
+      canvas.height = window.innerHeight;
+
+      if (currentImg) buildFromImage(currentImg);
+      markActive();
+    }
+
+    canvas.addEventListener("mousemove", e => {
+      const p = getCanvasMouse(e);
+      mouse.x = p.x;
+      mouse.y = p.y;
       mouse.active = true;
       markActive();
     });
@@ -410,16 +625,17 @@
     });
 
     canvas.addEventListener("mouseleave", () => {
-      mouse.x = -99999;
-      mouse.y = -99999;
+      mouse.x = -90000;
+      mouse.y = -90000;
       mouse.active = false;
       markActive();
     });
 
-    canvas.addEventListener("click", (e) => {
-      ripples.push(new Ripple(e.clientX, e.clientY));
+    canvas.addEventListener("click", e => {
+      const p = getCanvasMouse(e);
+      ripples.push(new Ripple(p.x, p.y));
 
-      if (ripples.length > settings.maxRipples) {
+      if (ripples.length > cfg.maxRipples) {
         ripples.shift();
       }
 
@@ -429,26 +645,34 @@
     window.addEventListener("resize", resizeCanvas);
 
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) {
-        markActive(250);
-      }
+      if (!document.hidden) markActive(250);
     });
 
-    fileInput.addEventListener("change", (event) => {
-      const file = event.target.files[0];
+    const fileInput = document.getElementById("fileInput");
+    fileInput.addEventListener("change", ev => {
+      const file = ev.target.files[0];
       if (!file) return;
 
       const reader = new FileReader();
-      reader.onload = (e) => loadImageFromSrc(e.target.result);
+      reader.onload = e => {
+        const img = new Image();
+        img.onload = () => {
+          resizeCanvas();
+          buildFromImage(img);
+        };
+        img.src = e.target.result;
+      };
+
       reader.readAsDataURL(file);
+      ev.target.value = "";
     });
 
     resizeCanvas();
+    updateStats();
 
-    const defaultPixelArt =
-      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAAxElEQVR4AWP4z8DA8J+BgYHhPwMDA8P/BgaG/y8MDAz/f2BgYPjPwMDA/38GBgb+PwYGBv4/Ghoa/j8GBgb+PwwMDD8wMDAw/AcGBv4fBgYG/j8MDAz/PwMDA/8fBgYG/j8DAwP/PwYGBv4/BgYG/j8GBgb+PwMDA/8/BgYG/j8MDAz/PwYGBv4/BgYG/j8DAwP/PwMDA/8/BgYG/j8DAwP/PwYGBv4/BgYG/j8MDAz/PwMDA/8AANM3E5v2Y4rKAAAAAElFTkSuQmCC";
-
-    loadImageFromSrc(defaultPixelArt);
+    const defImg = new Image();
+    defImg.onload = () => buildFromImage(defImg);
+    defImg.src = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAAxElEQVR4AWP4z8DA8J+BgYHhPwMDA8P/BgaG/y8MDAz/f2BgYPjPwMDA/38GBgb+PwYGBv4/Ghoa/j8GBgb+PwwMDD8wMDAw/AcGBv4fBgYG/j8MDAz/PwMDA/8fBgYG/j8DAwP/PwYGBv4/BgYG/j8GBgb+PwMDA/8/BgYG/j8MDAz/PwYGBv4/BgYG/j8DAwP/PwMDA/8/BgYG/j8DAwP/PwYGBv4/BgYG/j8MDAz/PwMDA/8AANM3E5v2Y4rKAAAAAElFTkSuQmCC";
   </script>
 </body>
 </html>
